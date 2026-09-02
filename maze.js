@@ -3,6 +3,13 @@ var gl;
 var program;
 var startTime = new Date();
 
+var renderSpeedBoost = 1;
+const urlParams = new URLSearchParams(window.location.search);
+const speedParam = Number(urlParams.get("speed") ?? urlParams.get("speedMultiplier"));
+if (Number.isFinite(speedParam) && speedParam > 0) {
+	renderSpeedBoost = speedParam;
+}
+
 //EDITABLE CONSTANTS
 const MzX = 10; //X dimension of Maze
 const MzY = 10; //Y dimension of Maze
@@ -507,28 +514,31 @@ var render = function () {
 	gl.uniform1i(gl.getUniformLocation(program, "i"), 2);
 	gl.drawArrays(gl.TRIANGLES, 6, 6);
 	if (!Math.round((FinX + .5 - eyeX) * 1000) / 1000 && !Math.round((FinY + .5 - eyeY) * 1000) / 1000) {
-		height -= .02;
+		height -= .02 * renderSpeedBoost;
 		scaleMatrix = scalem(1, 1, height);
 		gl.uniformMatrix4fv(scaleMatrixLoc, false, flatten(scaleMatrix));
 		if (height < 0)
 			resetVars();
 	} else if (height < 3 / 4) {
-		height += .02;
+		height += .02 * renderSpeedBoost;
 		scaleMatrix = scalem(1, 1, height);
 		gl.uniformMatrix4fv(scaleMatrixLoc, false, flatten(scaleMatrix));
 	} else if (Math.round(Math.abs(up[2]) * 10000) / 10000 - 1) {
 		if (((Math.round(theta / Math.PI * 180 * 10000) / 10000 % 360 / 90) + 5) % 2) {
-			up = vec3(mult(rotateX(2), vec4(up)));
+			up = vec3(mult(rotateX(2 * renderSpeedBoost), vec4(up)));
 		} else {
-			up = vec3(mult(rotateY(2), vec4(up)));
+			up = vec3(mult(rotateY(2 * renderSpeedBoost), vec4(up)));
 		}
 	} else {
-		[theta, eyeX, eyeY, dtheta, deyeX, deyeY] = nextMove(theta, eyeX, eyeY, dtheta, deyeX, deyeY);
-		[theta, eyeX, eyeY, dtheta, deyeX, deyeY] = nextMove(theta, eyeX, eyeY, dtheta, deyeX, deyeY);
+		for (var i = 0; i < 2 * renderSpeedBoost; i++) {
+			[theta, eyeX, eyeY, dtheta, deyeX, deyeY] = nextMove(theta, eyeX, eyeY, dtheta, deyeX, deyeY);
+		}
 	}
-	[rattheta, ratX, ratY, ratdtheta, ratdX, ratdY] = nextMove(rattheta, ratX, ratY, ratdtheta, ratdX, ratdY);
-	while (ratdtheta) {
+	for (var i = 0; i < renderSpeedBoost; i++) {
 		[rattheta, ratX, ratY, ratdtheta, ratdX, ratdY] = nextMove(rattheta, ratX, ratY, ratdtheta, ratdX, ratdY);
+		while (ratdtheta) {
+			[rattheta, ratX, ratY, ratdtheta, ratdX, ratdY] = nextMove(rattheta, ratX, ratY, ratdtheta, ratdX, ratdY);
+		}
 	}
 	gl.uniform1i(gl.getUniformLocation(program, "i"), 3);
 	gl.drawArrays(gl.TRIANGLES, 12, PICNUM * 6);
@@ -554,16 +564,16 @@ var render = function () {
 	gl.uniformMatrix4fv(scaleMatrixLoc, false, flatten(scaleMatrix));
 	gl.drawArrays(gl.TRIANGLES, NumVertices + 12, 6);
 	gl.uniform1i(gl.getUniformLocation(program, "i"), 8);
-	polytheta += 2;
+	polytheta += 2 * renderSpeedBoost;
 	for (i = 0; i < polypos.length; i++) {
 		scaleMatrix = mult(scalem(1, 1, 3 / 4), mult(translate(polypos[i][0] + .5, polypos[i][1] + .5, .25), rotateZ(polytheta)));
 		gl.uniformMatrix4fv(scaleMatrixLoc, false, flatten(scaleMatrix));
 		gl.drawArrays(gl.TRIANGLES, [12, 24, 48, 108][polypos[i][2]] + 6 + NumVertices, [12, 24, 60, 108][polypos[i][2]]);
 		if (!Math.round((polypos[i][0] + .5 - eyeX) * 1000) / 1000 && !Math.round((polypos[i][1] + .5 - eyeY) * 1000) / 1000) {
 			if (((Math.round(theta / Math.PI * 180 * 10000) / 10000 % 360 / 90) + 5) % 2) {
-				up = vec3(mult(rotateX(2), vec4(up)));
+				up = vec3(mult(rotateX(2 * renderSpeedBoost), vec4(up)));
 			} else {
-				up = vec3(mult(rotateY(2), vec4(up)));
+				up = vec3(mult(rotateY(2 * renderSpeedBoost), vec4(up)));
 			}
 			polypos.splice(i, 1);
 		}
