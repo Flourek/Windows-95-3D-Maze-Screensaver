@@ -13,9 +13,9 @@ if (Number.isFinite(speedParam) && speedParam > 0) {
 //EDITABLE CONSTANTS
 const MzX = 10; //X dimension of Maze
 const MzY = 10; //Y dimension of Maze
-var PICNUM = 3; //number of picture walls
+var PICNUM = 5; //number of picture walls
 var POLYNUM = 0; //number of polyhedra
-var OPENNUM = 3; //number of floating opengl's
+var OPENNUM = 5; //number of floating opengl's
 
 POLYNUM = Math.min(POLYNUM, MzX * MzY - 4);
 OPENNUM = Math.min(OPENNUM, MzX * MzY - 4 - POLYNUM);
@@ -27,6 +27,10 @@ var maze;
 var theta, dtheta;
 
 var polypos, openpos;
+var picTextures = [];
+var openTextures = [];
+var picTextureIndices = [];
+var openTextureIndices = [];
 var FinX, FinY;
 
 var eyeX, eyeY;
@@ -49,7 +53,7 @@ var modelViewMatrixLoc, projectionMatrixLoc, scaleMatrixLoc;
 var NumVertices;
 var elgible;
 
-var lighting;
+var lighting = false;
 
 var texSize = 64;
 
@@ -162,8 +166,9 @@ window.onload = function () {
 	//
 	program = initShaders(gl, "vertex-shader", "fragment-shader");
 	gl.useProgram(program);
-
-	resetVars();
+	initProceduralTextures(() => {
+		resetVars();
+	});
 
 	gl.enable(gl.CULL_FACE);
 
@@ -191,6 +196,8 @@ window.onload = function () {
 		gl.bindTexture(gl.TEXTURE_2D, wallTexture);
 		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, wallImg);
 		gl.generateMipmap(gl.TEXTURE_2D);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
 		const floorImg = new Image();
 		floorImg.onload = function () {
@@ -199,6 +206,8 @@ window.onload = function () {
 			gl.bindTexture(gl.TEXTURE_2D, floorTexture);
 			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, floorImg);
 			gl.generateMipmap(gl.TEXTURE_2D);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
 			const ceilingImg = new Image();
 			ceilingImg.onload = function () {
@@ -207,7 +216,8 @@ window.onload = function () {
 				gl.bindTexture(gl.TEXTURE_2D, ceilingTexture);
 				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, ceilingImg);
 				gl.generateMipmap(gl.TEXTURE_2D);
-				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
 				const picImg = new Image();
 				picImg.onload = function () {
@@ -266,17 +276,82 @@ window.onload = function () {
 				};
 				picImg.src = './pic.bmp';
 			};
-			ceilingImg.src = './ceiling2.bmp';
+			ceilingImg.src = './nether.bmp';
 		};
-		floorImg.src = './floor.bmp';
+		floorImg.src = './nether.bmp';
 	};
-	wallImg.src = './wall.bmp';
+	wallImg.src = './nether.bmp';
 
+}
+
+function initProceduralTextures(callback) {
+	const picCandidates = [
+		'pic1.bmp', 'pic2.bmp', 'pic3.bmp', 'pic4.bmp', 'pic5.bmp', 'pic.bmp'
+	];
+	const openCandidates = [
+		'open1.png', 'open2.png', 'open3.png', 'open4.png', 'open5.png', 'gl.png'
+	];
+
+	function makeTextureFromImage(img, alphaMode) {
+		const tex = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_2D, tex);
+		gl.texImage2D(gl.TEXTURE_2D, 0, alphaMode ? gl.RGBA : gl.RGB, alphaMode ? gl.RGBA : gl.RGB, gl.UNSIGNED_BYTE, img);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		return tex;
+	}
+
+	function loadTextureSet(candidates, alphaMode) {
+		return new Promise((resolve) => {
+			const textures = [];
+			let remaining = candidates.length;
+			if (remaining === 0) {
+				resolve(textures);
+				return;
+			}
+			candidates.forEach((src) => {
+				const img = new Image();
+				img.onload = () => {
+					textures.push(makeTextureFromImage(img, alphaMode));
+					remaining--;
+					if (remaining === 0) resolve(textures);
+				};
+				img.onerror = () => {
+					remaining--;
+					if (remaining === 0) resolve(textures);
+				};
+				img.src = src;
+			});
+		});
+	}
+
+	Promise.all([
+		loadTextureSet(picCandidates, false),
+		loadTextureSet(openCandidates, true)
+	]).then(([picTexturesLoaded, openTexturesLoaded]) => {
+		picTextures = picTexturesLoaded.length ? picTexturesLoaded : [];
+		openTextures = openTexturesLoaded.length > 0 ? openTexturesLoaded : [];
+
+		// If no custom open textures loaded, add gl.png as fallback
+		if (openTextures.length === 0) {
+			const fallbackImg = new Image();
+			fallbackImg.onload = () => {
+				openTextures.push(makeTextureFromImage(fallbackImg, true));
+				if (callback) callback();
+			};
+			fallbackImg.onerror = () => {
+				if (callback) callback();
+			};
+			fallbackImg.src = './gl.png';
+		} else {
+			if (callback) callback();
+		}
+	});
 }
 
 function resetVars() {
 
-	lighting = 0;
+	lighting = 1;
 
 	maze = newMaze(MzX, MzY);
 
@@ -335,8 +410,10 @@ function resetVars() {
 	}
 
 	openpos = []
+	openTextureIndices = [];
 	for (var i = 0; i < OPENNUM; i++) {
 		openpos.push(openplaces.splice(Math.floor(Math.random() * openplaces.length), 1)[0]);
+		openTextureIndices.push(openTextures.length ? Math.floor(Math.random() * openTextures.length) : 0);
 	}
 
 	[FinX, FinY] = openplaces.splice(Math.floor(Math.random() * openplaces.length), 1)[0];
@@ -360,9 +437,11 @@ function resetVars() {
 	}
 	if (PICNUM > elgible.length)
 		PICNUM = elgible.length;
+	picTextureIndices = [];
 	for (var i = 0; i < PICNUM; i++) {
 		var pos = elgible.splice(Math.floor(Math.random() * elgible.length), 1)[0];
 		maze[pos[0]][pos[1]][pos[2]] = 3;
+		picTextureIndices.push(picTextures.length ? Math.floor(Math.random() * picTextures.length) : 0);
 	}
 
 	pointsArray = [];
@@ -541,7 +620,11 @@ var render = function () {
 		}
 	}
 	gl.uniform1i(gl.getUniformLocation(program, "i"), 3);
-	gl.drawArrays(gl.TRIANGLES, 12, PICNUM * 6);
+	for (i = 0; i < picTextureIndices.length; i++) {
+		gl.activeTexture(gl.TEXTURE0 + 3);
+		gl.bindTexture(gl.TEXTURE_2D, picTextures[picTextureIndices[i] % picTextures.length]);
+		gl.drawArrays(gl.TRIANGLES, 12 + i * 6, 6);
+	}
 	gl.uniform1i(gl.getUniformLocation(program, "i"), 0);
 	gl.drawArrays(gl.TRIANGLES, 12 + PICNUM * 6, NumVertices - PICNUM * 6);
 
@@ -555,6 +638,10 @@ var render = function () {
 	gl.drawArrays(gl.TRIANGLES, NumVertices + 12, 6);
 	gl.uniform1i(gl.getUniformLocation(program, "i"), 6);
 	for (i = 0; i < openpos.length; i++) {
+		if (openTextures.length > 0) {
+			gl.activeTexture(gl.TEXTURE0 + 6);
+			gl.bindTexture(gl.TEXTURE_2D, openTextures[openTextureIndices[i] % openTextures.length]);
+		}
 		scaleMatrix = mult(scalem(1, 1, height), mult(translate(openpos[i][0] + .5, openpos[i][1] + .5, 0), rotateZ(theta / Math.PI * 180)));
 		gl.uniformMatrix4fv(scaleMatrixLoc, false, flatten(scaleMatrix));
 		gl.drawArrays(gl.TRIANGLES, NumVertices + 12, 6);
